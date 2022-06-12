@@ -147,8 +147,3 @@ savemesh(Th1, "vd5sao.mesh");
 plot(Th1, Th2);
 
 medit("Th", Th1, Th2);
-
-
-
-
-
