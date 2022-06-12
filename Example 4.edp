@@ -1,0 +1,144 @@
+/*********************************************************************
+ * Optimal control linear elasticity/Example 4.edp (2022/06/12)
+ *
+ * Copyright (C) 2022 Q. H. Nguyen, T. T. M. Ta
+ *
+ * Example 4: Beam movement toward a direction in 3D
+ * Objective function: L2 norm 
+ * Constraint function: No constraints
+ *********************************************************************/
+
+/* Libraries */
+load "ff-IpOpt"
+load "medit"
+load "msh3"
+include "cube.idp"
+
+/* Parameter */
+real lambda = 1e-9;                         // Tikhonov regularization paremeter
+real coef = 2.;                             // Scale factor
+
+/* Operators */
+// Strain rate tensor of a vector field
+macro ep(u, v, s) [dx(u), dy(v), dz(s), (dy(u) + dx(v))/sqrt(2.), (dz(u) + dx(s))/sqrt(2.), (dy(s) + dz(v))/sqrt(2.)] //EOM
+
+// divergence of a vector field
+macro div(u, v, s) (dx(u) + dy(v) + dz(s)) //EOM
+
+/* Problem configuration */
+real E = 21e5;                            // Young modulus of a material
+real nu = 0.3;                            // Poisson ratio of a material
+
+/* Build mesh */
+int[int] Nxyz = [5, 5, 20];
+real [int,int] Bxyz = [[0., 0.2], [0., 0.2], [0., 2.]];
+int [int,int] Lxyz = [[2, 2], [2, 2], [1, 2]];
+
+/* Create and plot the mesh */
+mesh3 Th = Cube(Nxyz, Bxyz, Lxyz);
+savemesh(Th, "vd4bandau.mesh");
+plot(Th);
+
+/* Declare FE space */
+fespace Vh(Th, P1);
+
+/* Declare FE varialbes */
+Vh fini1, fini2, fini3, fini, udes1, udes2, udes3, udes, usol1, usol2, usol3, usol, p; 
+
+/* Set initial values */
+real mu = E/(2*(1 + nu));                 // Lamé coefficients
+real kappa = E*nu/((1 + nu)*(1 - 2*nu));
+fini1[] = 0;                              // Initial load
+fini2[] = 0;
+fini3[] = 10;
+fini[] = [fini1[], fini2[], fini3[]];  
+
+/* Set desired state */
+udes1[] = 0;
+udes2[] = 0;
+udes3[] = asin(z/2)/(1.5*pi);
+udes[] = [udes1[], udes2[], udes3[]];
+
+/* Declare variational problems */
+func real[int] SolveState(real[int] ffsol){
+	Vh us1, us2, us3, vs1, vs2, vs3;
+    Vh f1, f2, f3, y1;
+    [f1[], f2[], f3[]] = ffsol;
+    solve Poisson([us1, us2, us3], [vs1, vs2, vs3]) = 
+						int3d(Th)(kappa*div(us1, us2, us3)*div(vs1, vs2, vs3) + 2.*mu*(ep(us1, us2, us3)'*ep(vs1, vs2, vs3)))
+						- int3d(Th)((f1*vs1 + f2*vs2 + f3*vs3))
+						+ on(1, us1 = 0, us2 = 0, us3 = 0);
+    y1[] = [us1[], us2[], us3[]];
+    return y1[];
+}
+
+func real[int] SolveAdjoint(real[int] ffsol){
+    Vh p;
+    Vh f1, f2, f3;
+	[f1[], f2[], f3[]] = ffsol;
+    Vh u1, u2, u3, v1, v2, v3;
+    solve Elasticity([u1, u2, u3], [v1, v2, v3]) = 
+        				int3d(Th)(kappa*div(u1, u2, u3)*div(v1, v2, v3) + 2.*mu*(ep(u1, u2, u3)'*ep(v1, v2, v3)))
+						- int3d(Th)((f1 - udes1)*v1 + (f2 - udes2)*v2 + (f3 - udes3)*v3)
+						+ on(1, u1 = 0, u2 = 0, u3 = 0);
+	p[] = [u1[], u2[], u3[]];					
+    return p[];
+}
+
+/* Declare the objective function */
+func real J(real[int] ffsol){
+    Vh uu1, uu2, uu3;
+    [uu1[], uu2[], uu3[]] = ffsol;
+    Vh yy1, yy2, yy3;
+    [yy1[], yy2[], yy3[]] = SolveState(ffsol);
+    real res;
+    res = 1./2*int3d(Th)((yy1 - udes1)^2 + (yy2 - udes2)^2 + (yy3 - udes3)^2)
+        + lambda/2*int3d(Th)(uu1^2 + uu2^2 + uu3^2);
+    return res;
+}
+
+/* Compute the gradient of the objective function */
+func real[int] gradJ(real[int] ffsol){
+    Vh pp1, pp2, pp3, qq1, qq2, qq3;
+    [pp1[], pp2[], pp3[]] = SolveAdjoint(SolveState(ffsol));
+    [qq1[], qq2[], qq3[]] = ffsol;
+    Vh res1 = pp1 + lambda*qq1; 
+	Vh res2 = pp2 + lambda*qq2;
+	Vh res3 = pp3 + lambda*qq3;
+	Vh res;
+	res[] = [res1[], res2[], res3[]];
+    return res[];
+}
+
+/* Main block */
+IPOPT(J, gradJ, fini[]);                              // Compute the optimal load
+
+[usol1[], usol2[], usol3[]] = SolveState(fini[]);     // Compute the optimal state
+usol[] = [usol1[], usol2[], usol3[]];
+
+/* Final results */
+mesh3 Thsao = movemesh(Th, [x + udes1*coef, y + udes2*coef, z + udes3*coef]);
+savemesh(Thsao, "vd4sao.mesh");
+mesh3 Thm = movemesh(Th,[x + usol1*coef, y + usol2*coef, z + usol3*coef]);
+savemesh(Thm, "vd4giai.mesh");
+
+/* Plot the solution */
+plot(Th, cmm = "Ban dau");
+plot(Thsao, cmm = "Mong muon");
+plot(Thm, cmm = "Dat duoc");
+plot(Th, Thsao, cmm = "Ban dau va Mong Muon");
+plot(Th, Thm, cmm = "Ban dau va Dat duoc");
+plot(Thsao, Thm, cmm = "Mong muon va Dat duoc");
+
+int[int] ref1 = [1, 0, 2, 0];
+Th = change(Th, label = ref1);
+
+int[int] ref2 = [1, 1, 2, 1];
+Thm = change(Thm, label = ref2);
+
+int[int] ref3 = [1, 2, 2, 2];
+Thsao = change(Thsao, label = ref3);
+
+medit("mesh", Th, Thm);
+
+
