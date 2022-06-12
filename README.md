@@ -5,7 +5,7 @@ This project is an implementation of the numerical algorithm for the bound const
 To begin, download and install the most recent version of [FreeFem++](https://freefem.org/). The version Freefem++ 4.5 was used to create this program.
 
 ### Clone this repository
-You can get the zip file [here](https://github.com/lvchien/shape_optimization/archive/master.zip) or clone this repository using git:
+You can get the zip file [here](https://github.com/Huydan06/OptimalControl-LinearElasticity/archive/main.zip) or clone this repository using git:
 ```
 git clone https://github.com/Huydan06/OptimalControl-LinearElasticity.git
 ```
