@@ -140,5 +140,3 @@ int[int] ref3 = [1, 2, 2, 2];
 Thsao = change(Thsao, label = ref3);
 
 medit("mesh", Th, Thm);
-
-
